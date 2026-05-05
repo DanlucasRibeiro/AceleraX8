@@ -23,6 +23,7 @@ void setup() {
   digitalWrite(LED_VERDE, LOW);
   digitalWrite(RELE, LOW);
   digitalWrite(LED_SAFETY, LOW);
+  acionarRele(true);
 }
 
 void loop() {
@@ -51,6 +52,7 @@ void loop() {
 }
 
 void acionarSemaforoCorrida() {
+  acionarRele(false);
   safetyAtivo = false;
   digitalWrite(LED_SAFETY, LOW);
 
@@ -72,7 +74,7 @@ void acionarSemaforoCorrida() {
 }
 
 void acionarRele(bool ligar) {
-  digitalWrite(RELE, ligar ? HIGH : LOW);
+  digitalWrite(RELE, ligar ? LOW : HIGH);
 }
 
 void iniciarSafetyCar() {
