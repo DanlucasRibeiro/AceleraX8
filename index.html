@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Accelere X8</title>
+
+<style>
+body {
+    margin: 0;
+
+    background: #0b0f1a;
+    color: white;
+    font-family: Arial, sans-serif;
+    transition: background 0.25s ease, color 0.25s ease;
+}
+
+.container {
+    padding: 20px;
+    position: relative;
+    z-index: 1;
+}
+
+h1 {
+    text-align: center;
+    color: #f5f8ff;
+}
+
+.status {
+    text-align: center;
+    margin-bottom: 10px;
+    font-size: 14px;
+}
+
+.connected { color: #00ff88; }
+.disconnected { color: red; }
+
+.controls {
+    display: flex;
+    gap: 12px;
+    align-items: end;
+    justify-content: center;
+    margin: 18px 0 22px;
+    flex-wrap: wrap;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 13px;
+    color: #b8c3da;
+}
+
+.field input {
+    width: 130px;
+    padding: 10px;
+    border: 1px solid #33415f;
+    background: #121a2e;
+    color: white;
+    border-radius: 6px;
+    font-size: 16px;
+}
+
+button {
+    padding: 11px 22px;
+    border: 0;
+    border-radius: 6px;
+    background: #00c875;
+    color: #06130d;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.safety-button {
+    background: #f5c400;
+    color: #151100;
+}
+
+.safety-button.active {
+    background: #111;
+    color: #ffd400;
+    box-shadow: 0 0 0 2px #ffd400 inset;
+}
+
+.finish-button {
+    background: #ff4d4d;
+    color: #250000;
+}
+
+.finish-button:disabled {
+    opacity: 0.45;
+}
+
+.race-info {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    margin-bottom: 16px;
+    color: #dce6ff;
+    font-size: 18px;
+}
+
+.safety-banner {
+    display: none;
+    margin: 0 auto 18px;
+    max-width: 760px;
+    padding: 14px 18px;
+    border: 2px solid #171300;
+    background: repeating-linear-gradient(
+        135deg,
+        #ffd400 0,
+        #ffd400 18px,
+        #111 18px,
+        #111 36px
+    );
+    color: #111;
+    text-align: center;
+    font-size: 28px;
+    font-weight: bold;
+    letter-spacing: 0;
+    text-shadow: 1px 1px 0 #ffd400;
+    animation: safetyPulse 0.8s infinite alternate;
+}
+
+body.safety-mode {
+    background: #ffd400;
+    color: #111;
+}
+
+body.safety-mode h1,
+body.safety-mode .field,
+body.safety-mode .race-info {
+    color: #111;
+}
+
+body.safety-mode .container::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+        linear-gradient(135deg, rgba(0,0,0,0.22) 25%, transparent 25%) 0 0 / 42px 42px,
+        linear-gradient(315deg, rgba(0,0,0,0.16) 25%, transparent 25%) 0 0 / 42px 42px;
+    opacity: 0.55;
+    animation: safetyMove 1.2s linear infinite;
+}
+
+body.safety-mode .safety-banner {
+    display: block;
+}
+
+body.safety-mode table {
+    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.75);
+}
+
+body.safety-mode th {
+    background: #111;
+    color: #ffd400;
+}
+
+@keyframes safetyPulse {
+    from { transform: scale(1); }
+    to { transform: scale(1.02); }
+}
+
+@keyframes safetyMove {
+    from { background-position: 0 0, 0 0; }
+    to { background-position: 42px 0, -42px 0; }
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 22px;
+    color: #eef3ff;
+}
+
+th, td {
+    padding: 12px;
+    text-align: center;
+}
+
+th {
+    background: #1f2a44;
+    color: #f7fbff;
+}
+
+tr:nth-child(even) {
+    background: #121a2e;
+}
+
+tr:nth-child(odd) {
+    background: #0f1627;
+}
+
+.pos1 { color: #ffd700; font-weight: bold; }
+.pos2 { color: #d9e2ef; font-weight: bold; }
+.pos3 { color: #f0a35b; font-weight: bold; }
+
+body.safety-mode tr:nth-child(even) {
+    background: #181818;
+}
+
+body.safety-mode tr:nth-child(odd) {
+    background: #252525;
+}
+
+.flash {
+    animation: flash 0.4s;
+}
+
+@keyframes flash {
+    from { background-color: #00ffcc; }
+    to { background-color: transparent; }
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+    <h1>🏁 Ranking - Accelera X8</h1>
+    <div id="status" class="status disconnected">Desconectado</div>
+
+    <div class="controls">
+        <label class="field">
+            Voltas
+            <input id="voltasLimite" type="number" min="1" value="10">
+        </label>
+        <label class="field">
+            Tempo limite (segundos)
+            <input id="tempoLimite" type="number" min="1" value="300">
+        </label>
+        <button id="btnStart" type="button" onclick="iniciarCorrida()">Start</button>
+        <button id="btnSafety" class="safety-button" type="button" onclick="alternarSafetyCar()">Safety Car</button>
+        <button id="btnFinish" class="finish-button" type="button" onclick="finalizarCorrida()">Finalizar Corrida</button>
+    </div>
+
+    <div class="race-info">
+        <div>Status: <strong id="raceStatus">Aguardando</strong></div>
+        <div>Tempo: <strong id="raceTime">--</strong></div>
+    </div>
+
+    <div class="safety-banner">SAFETY CAR ATIVO</div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Posição</th>
+                <th>Carro</th>
+                <th>Voltas</th>
+                <th>Última Volta</th>
+                <th>Melhor Volta</th>
+            </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+    </table>
+</div>
+
+<script>
+let ws;
+let ultimoEstado = {};
+
+function conectar() {
+    const host = window.location.hostname || "localhost";
+    ws = new WebSocket(`ws://${host}:8765`);
+
+    ws.onopen = () => {
+        document.getElementById("status").innerText = "Conectado";
+        document.getElementById("status").className = "status connected";
+    };
+
+    ws.onclose = () => {
+        document.getElementById("status").innerText = "Reconectando...";
+        document.getElementById("status").className = "status disconnected";
+        setTimeout(conectar, 2000);
+    };
+
+    ws.onerror = () => {
+        ws.close();
+    };
+
+    ws.onmessage = (event) => {
+        try {
+            const data = JSON.parse(event.data);
+            if (Array.isArray(data)) {
+                atualizarTabela(data);
+                return;
+            }
+
+            atualizarCorrida(data.corrida);
+            atualizarTabela(data.carros || []);
+        } catch (e) {
+            console.error("Erro ao processar dados:", e);
+        }
+    };
+}
+
+function formatarTempo(valor) {
+    if (!valor || valor === 0) return "--";
+    return valor.toFixed(2) + " s";
+}
+
+function iniciarCorrida() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+    ws.send(JSON.stringify({
+        tipo: "start",
+        voltas_limite: Number(document.getElementById("voltasLimite").value),
+        tempo_limite: Number(document.getElementById("tempoLimite").value)
+    }));
+}
+
+function alternarSafetyCar() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+    ws.send(JSON.stringify({
+        tipo: "safety_toggle"
+    }));
+}
+
+function finalizarCorrida() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+    ws.send(JSON.stringify({
+        tipo: "finish"
+    }));
+}
+
+function atualizarCorrida(corrida) {
+    if (!corrida) return;
+
+    document.getElementById("raceStatus").innerText = corrida.status || "aguardando";
+    document.getElementById("raceTime").innerText = formatarRelogio(corrida.tempo_restante);
+    document.getElementById("btnStart").disabled = ["preparando", "correndo"].includes(corrida.status);
+    document.getElementById("btnFinish").disabled = !["preparando", "correndo"].includes(corrida.status);
+
+    const safetyAtivo = Boolean(corrida.safety_car);
+    const btnSafety = document.getElementById("btnSafety");
+    btnSafety.disabled = corrida.status !== "correndo";
+    btnSafety.innerText = safetyAtivo ? "Encerrar Safety Car" : "Safety Car";
+    btnSafety.classList.toggle("active", safetyAtivo);
+    document.body.classList.toggle("safety-mode", safetyAtivo);
+}
+
+function formatarRelogio(segundos) {
+    if (segundos === undefined || segundos === null) return "--";
+
+    const total = Math.max(0, Math.ceil(segundos));
+    const min = Math.floor(total / 60);
+    const sec = total % 60;
+    return `${min}:${String(sec).padStart(2, "0")}`;
+}
+
+function atualizarTabela(data) {
+    const tbody = document.getElementById("tbody");
+    const ranking = [...data].sort((a, b) => {
+        if (b.voltas !== a.voltas) return b.voltas - a.voltas;
+
+        const melhorA = a.melhor || 999999;
+        const melhorB = b.melhor || 999999;
+        return melhorA - melhorB;
+    });
+
+    ranking.forEach((carro, i) => {
+        let tr = document.getElementById("row-" + carro.nome);
+
+        if (!tr) {
+            tr = document.createElement("tr");
+            tr.id = "row-" + carro.nome;
+        }
+
+        // classes de posição
+        tr.className = "";
+        if (i === 0) tr.classList.add("pos1");
+        if (i === 1) tr.classList.add("pos2");
+        if (i === 2) tr.classList.add("pos3");
+
+        // efeito de atualização (volta nova)
+        if (!ultimoEstado[carro.nome] ||
+            ultimoEstado[carro.nome].voltas !== carro.voltas) {
+            tr.classList.add("flash");
+        }
+
+        tr.innerHTML = `
+            <td>${i + 1}</td>
+            <td>${carro.nome}</td>
+            <td>${carro.voltas}</td>
+            <td>${formatarTempo(carro.ultima)}</td>
+            <td>${formatarTempo(carro.melhor)}</td>
+        `;
+
+        tbody.appendChild(tr);
+    });
+
+    // remove carros que sumiram
+    Object.keys(ultimoEstado).forEach(nome => {
+        if (!ranking.find(c => c.nome === nome)) {
+            const el = document.getElementById("row-" + nome);
+            if (el) el.remove();
+        }
+    });
+
+    // salva estado
+    ultimoEstado = {};
+    ranking.forEach(c => ultimoEstado[c.nome] = c);
+}
+
+// iniciar conexão
+conectar();
+</script>
+
+</body>
+</html>
