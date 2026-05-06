@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Accelere X8 - Telao</title>
+<link rel="stylesheet" href="css/telao.css">
+</head>
+
+<body>
+
+<main class="screen">
+    <img class="watermark-logo" src="../assets/logoFlower.svg" alt="">
+
+    <div class="topbar">
+        <div class="brand">
+            <img class="main-logo" src="../assets/logoX8.svg" alt="Accelera X8">
+            <h1>Ranking</h1>
+        </div>
+        <div id="status" class="status disconnected">Desconectado</div>
+    </div>
+
+    <div class="race-info">
+        <div class="metric">
+            <span>Status</span>
+            <strong id="raceStatus">Aguardando</strong>
+        </div>
+        <div class="metric">
+            <span>Tempo</span>
+            <strong id="raceTime">--</strong>
+        </div>
+        <div class="metric">
+            <span>Limite</span>
+            <strong id="raceLimit">--</strong>
+        </div>
+    </div>
+
+    <div class="safety-banner">SAFETY CAR ATIVO</div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Posicao</th>
+                <th>Carro</th>
+                <th>Voltas</th>
+                <th>Ultima Volta</th>
+                <th>Melhor Volta</th>
+            </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+    </table>
+</main>
+
+<script src="js/telao.js"></script>
+</body>
+</html>

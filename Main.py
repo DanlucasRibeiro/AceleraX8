@@ -99,9 +99,11 @@ def caminho_recurso(nome_arquivo):
     base = getattr(sys, "_MEIPASS", os.path.abspath("."))
     return os.path.join(base, nome_arquivo)
 
-painel_web = caminho_recurso("index.html").replace(os.sep, "/")
-webbrowser.open(f"file:///{painel_web}")
-print("Painel web aberto no navegador.")
+telao_web = caminho_recurso(os.path.join("web", "index.html")).replace(os.sep, "/")
+controle_web = caminho_recurso(os.path.join("web", "controle.html")).replace(os.sep, "/")
+webbrowser.open(f"file:///{telao_web}")
+webbrowser.open(f"file:///{controle_web}")
+print("Telao e painel de controle abertos no navegador.")
 
 def resetar_corrida():
     agora = time.perf_counter()
@@ -375,7 +377,11 @@ while True:
 # EXPORTAR CSV
 # =========================
 
-with open("resultado_corrida.csv", "w", newline="") as f:
+output_dir = os.path.join(os.path.abspath("."), "output")
+os.makedirs(output_dir, exist_ok=True)
+resultado_csv = os.path.join(output_dir, "resultado_corrida.csv")
+
+with open(resultado_csv, "w", newline="") as f:
     writer = csv.writer(f)
     writer.writerow(["Posicao", "Carro", "Voltas", "Ultima Volta", "Melhor Volta"])
 
@@ -393,7 +399,7 @@ with open("resultado_corrida.csv", "w", newline="") as f:
             round(dados["melhor_volta"], 2) if dados["melhor_volta"] else 0
         ])
 
-print("Resultado exportado para resultado_corrida.csv")
+print(f"Resultado exportado para {resultado_csv}")
 
 cap.release()
 if arduino and arduino.is_open:

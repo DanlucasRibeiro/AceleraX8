@@ -1,0 +1,131 @@
+body {
+    margin: 0;
+    background: #0b0f1a;
+    color: white;
+    font-family: Arial, sans-serif;
+    transition: background 0.25s ease, color 0.25s ease;
+}
+
+.container {
+    padding: 20px;
+    position: relative;
+    z-index: 1;
+}
+
+h1 {
+    text-align: center;
+    color: #f5f8ff;
+}
+
+.status {
+    text-align: center;
+    margin-bottom: 10px;
+    font-size: 14px;
+}
+
+.connected { color: #00ff88; }
+.disconnected { color: red; }
+
+.controls {
+    display: flex;
+    gap: 12px;
+    align-items: end;
+    justify-content: center;
+    margin: 18px 0 22px;
+    flex-wrap: wrap;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 13px;
+    color: #b8c3da;
+}
+
+.field input {
+    width: 130px;
+    padding: 10px;
+    border: 1px solid #33415f;
+    background: #121a2e;
+    color: white;
+    border-radius: 6px;
+    font-size: 16px;
+}
+
+button {
+    padding: 11px 22px;
+    border: 0;
+    border-radius: 6px;
+    background: #00c875;
+    color: #06130d;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.safety-button {
+    background: #f5c400;
+    color: #151100;
+}
+
+.safety-button.active {
+    background: #111;
+    color: #ffd400;
+    box-shadow: 0 0 0 2px #ffd400 inset;
+}
+
+.finish-button {
+    background: #ff4d4d;
+    color: #250000;
+}
+
+.race-info {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    margin-bottom: 16px;
+    color: #dce6ff;
+    font-size: 18px;
+}
+
+.links {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 16px;
+}
+
+.links a {
+    color: #8fd3ff;
+    text-decoration: none;
+    font-weight: bold;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 20px;
+    color: #eef3ff;
+}
+
+th, td {
+    padding: 10px;
+    text-align: center;
+}
+
+th {
+    background: #1f2a44;
+    color: #f7fbff;
+}
+
+tr:nth-child(even) { background: #121a2e; }
+tr:nth-child(odd) { background: #0f1627; }
+
+.pos1 { color: #ffd700; font-weight: bold; }
+.pos2 { color: #d9e2ef; font-weight: bold; }
+.pos3 { color: #f0a35b; font-weight: bold; }

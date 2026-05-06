@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Accelere X8 - Controle</title>
+<link rel="stylesheet" href="css/controle.css">
+</head>
+
+<body>
+
+<div class="container">
+    <h1>Controle - Accelera X8</h1>
+    <div id="status" class="status disconnected">Desconectado</div>
+
+    <div class="links">
+        <a href="index.html" target="_blank">Abrir telao</a>
+    </div>
+
+    <div class="controls">
+        <label class="field">
+            Voltas
+            <input id="voltasLimite" type="number" min="1" value="10">
+        </label>
+        <label class="field">
+            Tempo limite (segundos)
+            <input id="tempoLimite" type="number" min="1" value="300">
+        </label>
+        <button id="btnStart" type="button" onclick="iniciarCorrida()">Start</button>
+        <button id="btnSafety" class="safety-button" type="button" onclick="alternarSafetyCar()">Safety Car</button>
+        <button id="btnFinish" class="finish-button" type="button" onclick="finalizarCorrida()">Finalizar Corrida</button>
+    </div>
+
+    <div class="race-info">
+        <div>Status: <strong id="raceStatus">Aguardando</strong></div>
+        <div>Tempo: <strong id="raceTime">--</strong></div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Posicao</th>
+                <th>Carro</th>
+                <th>Voltas</th>
+                <th>Ultima Volta</th>
+                <th>Melhor Volta</th>
+            </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+    </table>
+</div>
+
+<script src="js/controle.js"></script>
+</body>
+</html>
