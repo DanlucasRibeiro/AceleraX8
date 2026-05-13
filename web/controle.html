@@ -26,13 +26,50 @@
             <input id="tempoLimite" type="number" min="1" value="300">
         </label>
         <button id="btnStart" type="button" onclick="iniciarCorrida()">Start</button>
+        <button id="btnRestart" class="restart-button" type="button" onclick="reiniciarCorrida()">Reiniciar</button>
+        <button id="btnReset" class="reset-button" type="button" onclick="zerarCorrida()">Zerar</button>
         <button id="btnSafety" class="safety-button" type="button" onclick="alternarSafetyCar()">Safety Car</button>
         <button id="btnFinish" class="finish-button" type="button" onclick="finalizarCorrida()">Finalizar Corrida</button>
+        <button id="btnReconnect" class="reconnect-button" type="button" onclick="reconectarSistema()">Reconectar</button>
+    </div>
+
+    <div class="drivers">
+        <label class="driver-field">
+            <span class="color-dot red"></span>
+            Vermelho
+            <input data-cor="vermelho" type="text" placeholder="Nome do corredor">
+        </label>
+        <label class="driver-field">
+            <span class="color-dot blue"></span>
+            Azul
+            <input data-cor="azul" type="text" placeholder="Nome do corredor">
+        </label>
+        <label class="driver-field">
+            <span class="color-dot green"></span>
+            Verde
+            <input data-cor="verde" type="text" placeholder="Nome do corredor">
+        </label>
+        <label class="driver-field">
+            <span class="color-dot yellow"></span>
+            Amarelo
+            <input data-cor="amarelo" type="text" placeholder="Nome do corredor">
+        </label>
+        <label class="driver-field">
+            <span class="color-dot purple"></span>
+            Roxo
+            <input data-cor="roxo" type="text" placeholder="Nome do corredor">
+        </label>
+        <label class="driver-field">
+            <span class="color-dot orange"></span>
+            Laranja
+            <input data-cor="laranja" type="text" placeholder="Nome do corredor">
+        </label>
     </div>
 
     <div class="race-info">
         <div>Status: <strong id="raceStatus">Aguardando</strong></div>
         <div>Tempo: <strong id="raceTime">--</strong></div>
+        <div>Camera: <strong id="cameraStatus">--</strong></div>
     </div>
 
     <table>

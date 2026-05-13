@@ -36,11 +36,32 @@ function enviar(tipo, dados = {}) {
     ws.send(JSON.stringify({ tipo, ...dados }));
 }
 
+function coletarCorredores() {
+    const corredores = {};
+    document.querySelectorAll("[data-cor]").forEach(input => {
+        corredores[input.dataset.cor] = input.value.trim();
+    });
+    return corredores;
+}
+
 function iniciarCorrida() {
     enviar("start", {
         voltas_limite: Number(document.getElementById("voltasLimite").value),
-        tempo_limite: Number(document.getElementById("tempoLimite").value)
+        tempo_limite: Number(document.getElementById("tempoLimite").value),
+        corredores: coletarCorredores()
     });
+}
+
+function reiniciarCorrida() {
+    enviar("restart", {
+        voltas_limite: Number(document.getElementById("voltasLimite").value),
+        tempo_limite: Number(document.getElementById("tempoLimite").value),
+        corredores: coletarCorredores()
+    });
+}
+
+function zerarCorrida() {
+    enviar("reset");
 }
 
 function alternarSafetyCar() {
@@ -51,13 +72,28 @@ function finalizarCorrida() {
     enviar("finish");
 }
 
+function reconectarSistema() {
+    enviar("camera_reconnect");
+
+    if (ws) {
+        ws.onclose = null;
+        ws.close();
+    }
+
+    setTimeout(conectar, 250);
+}
+
 function atualizarCorrida(corrida) {
     if (!corrida) return;
 
     document.getElementById("raceStatus").innerText = corrida.status || "aguardando";
     document.getElementById("raceTime").innerText = formatarRelogio(corrida.tempo_restante);
-    document.getElementById("btnStart").disabled = ["preparando", "correndo"].includes(corrida.status);
-    document.getElementById("btnFinish").disabled = !["preparando", "correndo"].includes(corrida.status);
+    document.getElementById("cameraStatus").innerText = corrida.camera_conectada ? "Conectada" : "Desconectada";
+    const corridaEmAndamento = ["preparando", "correndo"].includes(corrida.status);
+    document.getElementById("btnStart").disabled = corridaEmAndamento;
+    document.getElementById("btnRestart").disabled = false;
+    document.getElementById("btnReset").disabled = corrida.status === "aguardando";
+    document.getElementById("btnFinish").disabled = !corridaEmAndamento;
 
     const safetyAtivo = Boolean(corrida.safety_car);
     const btnSafety = document.getElementById("btnSafety");
@@ -79,6 +115,16 @@ function formatarTempo(valor) {
     return valor.toFixed(2) + " s";
 }
 
+function escaparHtml(valor) {
+    return String(valor || "").replace(/[&<>"']/g, caractere => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+    }[caractere]));
+}
+
 function atualizarTabela(data) {
     const tbody = document.getElementById("tbody");
     const ranking = [...data].sort((a, b) => {
@@ -87,11 +133,11 @@ function atualizarTabela(data) {
     });
 
     ranking.forEach((carro, i) => {
-        let tr = document.getElementById("row-" + carro.nome);
+        let tr = document.getElementById("row-" + carro.cor);
 
         if (!tr) {
             tr = document.createElement("tr");
-            tr.id = "row-" + carro.nome;
+            tr.id = "row-" + carro.cor;
         }
 
         tr.className = "";
@@ -99,9 +145,12 @@ function atualizarTabela(data) {
         if (i === 1) tr.classList.add("pos2");
         if (i === 2) tr.classList.add("pos3");
 
+        const cor = escaparHtml(carro.cor);
+        const nome = escaparHtml(carro.nome);
+
         tr.innerHTML = `
             <td>${i + 1}</td>
-            <td>${carro.nome}</td>
+            <td><span class="color-name">${cor}</span> ${nome}</td>
             <td>${carro.voltas}</td>
             <td>${formatarTempo(carro.ultima)}</td>
             <td>${formatarTempo(carro.melhor)}</td>
@@ -111,14 +160,14 @@ function atualizarTabela(data) {
     });
 
     Object.keys(ultimoEstado).forEach(nome => {
-        if (!ranking.find(c => c.nome === nome)) {
+        if (!ranking.find(c => c.cor === nome)) {
             const el = document.getElementById("row-" + nome);
             if (el) el.remove();
         }
     });
 
     ultimoEstado = {};
-    ranking.forEach(c => ultimoEstado[c.nome] = c);
+    ranking.forEach(c => ultimoEstado[c.cor] = c);
 }
 
 conectar();

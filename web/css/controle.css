@@ -85,6 +85,70 @@ button:disabled {
     color: #250000;
 }
 
+.restart-button {
+    background: #4da3ff;
+    color: #06111f;
+}
+
+.reset-button {
+    background: #d7dde8;
+    color: #111827;
+}
+
+.reconnect-button {
+    background: #8b5cf6;
+    color: #ffffff;
+}
+
+.drivers {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 10px;
+    margin: 0 auto 20px;
+    max-width: 980px;
+}
+
+.driver-field {
+    display: grid;
+    grid-template-columns: 14px 76px 1fr;
+    align-items: center;
+    gap: 8px;
+    color: #dce6ff;
+    font-size: 14px;
+}
+
+.driver-field input {
+    min-width: 0;
+    padding: 9px;
+    border: 1px solid #33415f;
+    background: #121a2e;
+    color: white;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.color-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.red { background: #ff4d4d; }
+.blue { background: #4da3ff; }
+.green { background: #2bd46f; }
+.yellow { background: #f5c400; }
+.purple { background: #c084fc; }
+.orange { background: #ff9f1c; }
+
+.color-name {
+    display: inline-block;
+    margin-right: 8px;
+    color: #9fb2d8;
+    font-size: 0.78em;
+    text-transform: uppercase;
+}
+
 .race-info {
     display: flex;
     justify-content: center;

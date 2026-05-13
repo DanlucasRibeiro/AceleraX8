@@ -11,7 +11,8 @@ config_corrida = {
     "voltas_limite": 10,
     "tempo_limite": 300,
     "tempo_restante": 300,
-    "safety_car": False
+    "safety_car": False,
+    "camera_conectada": False
 }
 
 async def processar_mensagem(message):
@@ -20,7 +21,7 @@ async def processar_mensagem(message):
     except json.JSONDecodeError:
         return
 
-    if dados.get("tipo") == "start":
+    if dados.get("tipo") in ("start", "restart"):
         voltas = max(1, int(dados.get("voltas_limite", 10)))
         tempo = max(1, int(dados.get("tempo_limite", 300)))
 
@@ -33,9 +34,10 @@ async def processar_mensagem(message):
         })
 
         comandos.append({
-            "tipo": "start",
+            "tipo": dados.get("tipo"),
             "voltas_limite": voltas,
-            "tempo_limite": tempo
+            "tempo_limite": tempo,
+            "corredores": dados.get("corredores", {})
         })
 
     if dados.get("tipo") == "safety_toggle":
@@ -46,6 +48,21 @@ async def processar_mensagem(message):
     if dados.get("tipo") == "finish":
         comandos.append({
             "tipo": "finish"
+        })
+
+    if dados.get("tipo") == "reset":
+        config_corrida.update({
+            "status": "aguardando",
+            "tempo_restante": config_corrida.get("tempo_limite", 300),
+            "safety_car": False
+        })
+        comandos.append({
+            "tipo": "reset"
+        })
+
+    if dados.get("tipo") == "camera_reconnect":
+        comandos.append({
+            "tipo": "camera_reconnect"
         })
 
 # -------------------------
@@ -69,10 +86,12 @@ async def broadcast():
 
             for nome, d in list(estado_corrida.items()):
                 carros.append({
-                    "nome": nome,
+                    "cor": d.get("cor", nome),
+                    "nome": d.get("nome") or nome,
                     "voltas": d["voltas"],
                     "ultima": d["ultima_volta"] or 0,
-                    "melhor": d["melhor_volta"] or 0
+                    "melhor": d["melhor_volta"] or 0,
+                    "largou": d.get("largou", False)
                 })
 
             carros.sort(key=lambda x: (-x["voltas"], x["melhor"] or 9999))

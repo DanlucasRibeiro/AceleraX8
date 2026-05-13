@@ -11,17 +11,24 @@ try:
 except ImportError:
     serial = None
 
+try:
+    import winsound
+except ImportError:
+    winsound = None
+
 from server import comandos, config_corrida, estado_corrida, start_server_background
 
 # =========================
 # CONFIGURAÇÕES GERAIS
 # =========================
 
-CAMERA_INDEX = None  # None = procurar camera automaticamente. Use 0, 1, 2... para fixar.
+CAMERA_INDEX = 0  # None = procurar camera automaticamente. Use 0, 1, 2... para fixar.
 ARDUINO_PORT = None  # None = procurar automaticamente. Exemplo manual: "COM3"
 ARDUINO_BAUD = 9600
 TEMPO_SEMAFORO = 3.0  # segundos ate a largada apos enviar START ao Arduino
 TEMPO_TELAO_ESTATICO = 300  # segundos mantendo o telao aberto apos finalizar pelo botao
+CAMERA_RECONNECT_INTERVAL = 2.0
+AUDIO_LARGADA = os.path.join("assets", "ContagemRegressiva.wav")
 FRAME_WIDTH = 1280
 FRAME_HEIGHT = 720
 
@@ -82,18 +89,26 @@ encerrar_camera = False
 manter_telao_estatico = False
 voltas_limite = config_corrida["voltas_limite"]
 tempo_limite = config_corrida["tempo_limite"]
+resultado_exportado = False
+cap = None
+ultima_tentativa_camera = 0
 
 for nome in carros:
     estado[nome] = {
+        "cor": nome,
+        "nome": nome,
         "ultima_pos": None,
         "ultima_passagem": 0,
         "voltas": 0,
         "melhor_volta": None,
         "ultima_volta": None,
+        "largou": False,
         "tempo_inicio": time.perf_counter()
     }
 
 start_server_background()
+
+config_corrida["camera_conectada"] = False
 
 def caminho_recurso(nome_arquivo):
     base = getattr(sys, "_MEIPASS", os.path.abspath("."))
@@ -114,7 +129,47 @@ def resetar_corrida():
         dados["voltas"] = 0
         dados["melhor_volta"] = None
         dados["ultima_volta"] = None
+        dados["largou"] = False
         dados["tempo_inicio"] = agora
+
+def aplicar_nomes_corredores(nomes_corredores):
+    if not isinstance(nomes_corredores, dict):
+        return
+
+    for cor, nome_digitado in nomes_corredores.items():
+        if cor not in estado:
+            continue
+
+        nome_limpo = str(nome_digitado).strip()
+        estado[cor]["nome"] = nome_limpo or cor
+
+def exportar_resultado():
+    global resultado_exportado
+
+    output_dir = os.path.join(os.path.abspath("."), "output")
+    os.makedirs(output_dir, exist_ok=True)
+    resultado_csv = os.path.join(output_dir, "resultado_corrida.csv")
+
+    with open(resultado_csv, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Posicao", "Carro", "Voltas", "Ultima Volta", "Melhor Volta"])
+
+        ranking_final = sorted(
+            estado.items(),
+            key=lambda x: (-x[1]["voltas"], x[1]["melhor_volta"] or 9999)
+        )
+
+        for posicao, (nome, dados) in enumerate(ranking_final, start=1):
+            writer.writerow([
+                posicao,
+                dados.get("nome") or nome,
+                dados["voltas"],
+                round(dados["ultima_volta"], 2) if dados["ultima_volta"] else 0,
+                round(dados["melhor_volta"], 2) if dados["melhor_volta"] else 0
+            ])
+
+    resultado_exportado = True
+    print(f"Resultado exportado para {resultado_csv}")
 
 def abrir_arduino():
     if serial is None:
@@ -139,6 +194,20 @@ def acionar_semaforo():
     if arduino and arduino.is_open:
         arduino.write(b"START\n")
         print("Comando START enviado ao Arduino.")
+    tocar_som_largada()
+
+def tocar_som_largada():
+    if winsound is None:
+        print("Som de largada indisponivel neste sistema.")
+        return
+
+    caminho_audio = caminho_recurso(AUDIO_LARGADA)
+
+    if not os.path.exists(caminho_audio):
+        print(f"Audio de largada nao encontrado: {caminho_audio}")
+        return
+
+    winsound.PlaySound(caminho_audio, winsound.SND_FILENAME | winsound.SND_ASYNC)
 
 def enviar_arduino(comando):
     if arduino and arduino.is_open:
@@ -147,12 +216,14 @@ def enviar_arduino(comando):
 
 def iniciar_corrida(comando):
     global corrida_inicio, aguardando_largada_ate, voltas_limite, tempo_limite
-    global tempo_pausado_total, safety_inicio
+    global tempo_pausado_total, safety_inicio, resultado_exportado
 
     voltas_limite = comando["voltas_limite"]
     tempo_limite = comando["tempo_limite"]
     tempo_pausado_total = 0
     safety_inicio = None
+    resultado_exportado = False
+    aplicar_nomes_corredores(comando.get("corredores"))
     resetar_corrida()
     acionar_semaforo()
 
@@ -187,29 +258,56 @@ def alternar_safety_car():
         enviar_arduino("SAFETY_ON")
         print("Safety Car acionado. Cronometro pausado.")
 
-def finalizar_corrida(manter_telao=True):
-    global encerrar_camera, manter_telao_estatico, safety_inicio
+def zerar_corrida():
+    global corrida_inicio, aguardando_largada_ate, tempo_pausado_total, safety_inicio
+    global resultado_exportado
 
     if config_corrida.get("safety_car"):
         enviar_arduino("SAFETY_OFF")
 
     enviar_arduino("STOP")
+    corrida_inicio = None
+    aguardando_largada_ate = None
+    tempo_pausado_total = 0
+    safety_inicio = None
+    resultado_exportado = False
+    resetar_corrida()
+    config_corrida.update({
+        "status": "aguardando",
+        "tempo_restante": tempo_limite,
+        "safety_car": False
+    })
+    print("Corrida zerada. Sistema pronto para iniciar novamente.")
+
+def finalizar_corrida(manter_telao=True):
+    global corrida_inicio, aguardando_largada_ate, manter_telao_estatico, safety_inicio
+
+    if config_corrida.get("safety_car"):
+        enviar_arduino("SAFETY_OFF")
+
+    enviar_arduino("STOP")
+    corrida_inicio = None
+    aguardando_largada_ate = None
     config_corrida["status"] = "finalizada"
     config_corrida["safety_car"] = False
     safety_inicio = None
-    encerrar_camera = True
     manter_telao_estatico = manter_telao
-    print("Finalizacao solicitada. Camera sera encerrada e relatorio sera gerado.")
+    exportar_resultado()
+    print("Corrida finalizada. Sistema continua aberto para zerar ou iniciar novamente.")
 
 def processar_comandos():
     while comandos:
         comando = comandos.pop(0)
-        if comando.get("tipo") == "start":
+        if comando.get("tipo") in ("start", "restart"):
             iniciar_corrida(comando)
         elif comando.get("tipo") == "safety_toggle":
             alternar_safety_car()
         elif comando.get("tipo") == "finish":
             finalizar_corrida(manter_telao=True)
+        elif comando.get("tipo") == "reset":
+            zerar_corrida()
+        elif comando.get("tipo") == "camera_reconnect":
+            reconectar_camera(forcar=True)
 
 def atualizar_estado_corrida():
     global corrida_inicio, aguardando_largada_ate
@@ -265,9 +363,32 @@ def abrir_camera():
         "Verifique se a camera esta conectada e nao esta aberta em outro programa."
     )
 
-cap = abrir_camera()
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
+def reconectar_camera(forcar=False):
+    global cap, ultima_tentativa_camera
+
+    agora = time.perf_counter()
+    if not forcar and agora - ultima_tentativa_camera < CAMERA_RECONNECT_INTERVAL:
+        return cap is not None
+
+    ultima_tentativa_camera = agora
+
+    if cap is not None:
+        cap.release()
+        cap = None
+
+    try:
+        cap = abrir_camera()
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
+        config_corrida["camera_conectada"] = True
+        print("Camera conectada.")
+        return True
+    except RuntimeError as erro:
+        config_corrida["camera_conectada"] = False
+        print(f"Falha ao conectar camera: {erro}")
+        return False
+
+reconectar_camera(forcar=True)
 
 kernel = np.ones((5, 5), np.uint8)
 arduino = abrir_arduino()
@@ -302,9 +423,30 @@ while True:
     if encerrar_camera:
         break
 
-    ret, frame = cap.read()
+    ret, frame = cap.read() if cap is not None else (False, None)
     if not ret:
-        break
+        config_corrida["camera_conectada"] = False
+        reconectar_camera()
+        frame = np.zeros((FRAME_HEIGHT, FRAME_WIDTH, 3), dtype=np.uint8)
+        cv2.putText(
+            frame,
+            "Camera desconectada - use Reconectar no painel",
+            (70, FRAME_HEIGHT // 2),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1.0,
+            (255, 255, 255),
+            2
+        )
+        cv2.imshow("Sistema de Corrida RC", frame)
+        key = cv2.waitKey(1)
+
+        if key == 27:
+            manter_telao_estatico = False
+            break
+
+        continue
+
+    config_corrida["camera_conectada"] = True
 
     frame = cv2.flip(frame, 0)  # ajustar se necessário
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
@@ -335,17 +477,23 @@ while True:
                     tempo_desde_ultima = agora - estado[nome]["ultima_passagem"]
 
                     if tempo_desde_ultima > COOLDOWN:
-                        estado[nome]["voltas"] += 1
+                        if not estado[nome]["largou"]:
+                            estado[nome]["largou"] = True
+                            estado[nome]["tempo_inicio"] = agora
+                            estado[nome]["ultima_passagem"] = agora
+                            print(f"{nome} - Inicio registrado.")
+                        else:
+                            estado[nome]["voltas"] += 1
 
-                        tempo_volta = agora - estado[nome]["ultima_passagem"]
-                        estado[nome]["ultima_passagem"] = agora
-                        estado[nome]["ultima_volta"] = tempo_volta
+                            tempo_volta = agora - estado[nome]["ultima_passagem"]
+                            estado[nome]["ultima_passagem"] = agora
+                            estado[nome]["ultima_volta"] = tempo_volta
 
-                        if (estado[nome]["melhor_volta"] is None or 
-                            tempo_volta < estado[nome]["melhor_volta"]):
-                            estado[nome]["melhor_volta"] = tempo_volta
+                            if (estado[nome]["melhor_volta"] is None or 
+                                tempo_volta < estado[nome]["melhor_volta"]):
+                                estado[nome]["melhor_volta"] = tempo_volta
 
-                        print(f"{nome} - Volta {estado[nome]['voltas']} - {tempo_volta:.2f}s")
+                            print(f"{nome} - Volta {estado[nome]['voltas']} - {tempo_volta:.2f}s")
 
             estado[nome]["ultima_pos"] = cy
 
@@ -361,7 +509,8 @@ while True:
     y_texto = 30
 
     for i, (nome, dados) in enumerate(ranking):
-        texto = f"{i+1}º {nome} | Voltas: {dados['voltas']} | Ult: {dados['ultima_volta'] or 0:.2f}s | Best: {dados['melhor_volta'] or 0:.2f}s"
+        nome_exibicao = dados.get("nome") or nome
+        texto = f"{i+1}º {nome_exibicao} | Voltas: {dados['voltas']} | Ult: {dados['ultima_volta'] or 0:.2f}s | Best: {dados['melhor_volta'] or 0:.2f}s"
         cv2.putText(frame, texto, (10, y_texto), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,255), 2)
         y_texto += 25
 
@@ -377,31 +526,11 @@ while True:
 # EXPORTAR CSV
 # =========================
 
-output_dir = os.path.join(os.path.abspath("."), "output")
-os.makedirs(output_dir, exist_ok=True)
-resultado_csv = os.path.join(output_dir, "resultado_corrida.csv")
+if not resultado_exportado:
+    exportar_resultado()
 
-with open(resultado_csv, "w", newline="") as f:
-    writer = csv.writer(f)
-    writer.writerow(["Posicao", "Carro", "Voltas", "Ultima Volta", "Melhor Volta"])
-
-    ranking_final = sorted(
-        estado.items(),
-        key=lambda x: (-x[1]["voltas"], x[1]["melhor_volta"] or 9999)
-    )
-
-    for posicao, (nome, dados) in enumerate(ranking_final, start=1):
-        writer.writerow([
-            posicao,
-            nome,
-            dados["voltas"],
-            round(dados["ultima_volta"], 2) if dados["ultima_volta"] else 0,
-            round(dados["melhor_volta"], 2) if dados["melhor_volta"] else 0
-        ])
-
-print(f"Resultado exportado para {resultado_csv}")
-
-cap.release()
+if cap is not None:
+    cap.release()
 if arduino and arduino.is_open:
     arduino.close()
 cv2.destroyAllWindows()
