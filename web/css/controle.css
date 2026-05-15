@@ -134,12 +134,12 @@ button:disabled {
     display: inline-block;
 }
 
-.red { background: #ff4d4d; }
+.red { background: #ff1f1f; }
 .blue { background: #4da3ff; }
 .green { background: #2bd46f; }
 .yellow { background: #f5c400; }
-.purple { background: #c084fc; }
-.orange { background: #ff9f1c; }
+.purple { background: #5b21b6; }
+.brown { background: #8b5a2b; }
 
 .color-name {
     display: inline-block;

@@ -33,7 +33,7 @@ FRAME_WIDTH = 1280
 FRAME_HEIGHT = 720
 
 LINHA_Y = 300  # posição da linha de chegada (ajustar!)
-COOLDOWN = 2.0  # tempo mínimo entre voltas (segundos)
+COOLDOWN = 15.0  # tempo mínimo entre voltas (segundos)
 AREA_MIN = 800  # área mínima para considerar objeto
 
 # =========================
@@ -43,34 +43,36 @@ AREA_MIN = 800  # área mínima para considerar objeto
 
 carros = {
     "vermelho": {
-        "lower": np.array([0, 150, 100]),
-        "upper": np.array([10, 255, 255]),
+        "ranges": [
+            (np.array([0, 170, 120]), np.array([8, 255, 255])),
+            (np.array([170, 170, 120]), np.array([179, 255, 255])),
+        ],
         "cor_bgr": (0, 0, 255)
     },
     "azul": {
-        "lower": np.array([100, 150, 50]),
+        "lower": np.array([95, 100, 60]),
         "upper": np.array([130, 255, 255]),
         "cor_bgr": (255, 0, 0)
     },
     "verde": {
-        "lower": np.array([40, 100, 50]),
-        "upper": np.array([80, 255, 255]),
+        "lower": np.array([40, 80, 50]),
+        "upper": np.array([85, 255, 255]),
         "cor_bgr": (0, 255, 0)
     },
     "amarelo": {
-        "lower": np.array([20, 150, 150]),
+        "lower": np.array([20, 130, 130]),
         "upper": np.array([35, 255, 255]),
         "cor_bgr": (0, 255, 255)
     },
     "roxo": {
-        "lower": np.array([130, 80, 80]),
-        "upper": np.array([160, 255, 255]),
-        "cor_bgr": (255, 0, 255)
+        "lower": np.array([125, 60, 30]),
+        "upper": np.array([160, 255, 170]),
+        "cor_bgr": (128, 0, 128)
     },
-    "laranja": {
-        "lower": np.array([10, 150, 150]),
-        "upper": np.array([20, 255, 255]),
-        "cor_bgr": (0, 165, 255)
+    "marrom": {
+        "lower": np.array([5, 70, 35]),
+        "upper": np.array([25, 255, 150]),
+        "cor_bgr": (42, 42, 165)
     },
 }
 
@@ -457,7 +459,14 @@ while True:
     cv2.line(frame, (0, LINHA_Y), (FRAME_WIDTH, LINHA_Y), (255, 255, 255), 2)
 
     for nome, config in carros.items():
-        mask = cv2.inRange(hsv, config["lower"], config["upper"])
+        if "ranges" in config:
+            mask = np.zeros(hsv.shape[:2], dtype=np.uint8)
+
+            for lower, upper in config["ranges"]:
+                mask = cv2.bitwise_or(mask, cv2.inRange(hsv, lower, upper))
+        else:
+            mask = cv2.inRange(hsv, config["lower"], config["upper"])
+
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
 
         resultado = detectar_centro(mask)
