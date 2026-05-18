@@ -36,6 +36,7 @@ FRAME_WIDTH = 1280
 FRAME_HEIGHT = 720
 TARGET_FPS = 60
 CAMERA_ORIENTATION = "rotate_180"  # normal, rotate_180, flip_horizontal, flip_vertical
+CAMERA_WINDOW_NAME = "Sistema de Corrida RC"
 
 LINHA_Y = 300
 FAIXA_ALTURA = 80
@@ -316,6 +317,7 @@ def zerar_corrida():
 
 def finalizar_corrida(manter_telao=True):
     global corrida_inicio, aguardando_largada_ate, manter_telao_estatico, safety_inicio
+    global encerrar_camera
 
     if config_corrida.get("safety_car"):
         enviar_arduino("SAFETY_OFF")
@@ -327,8 +329,9 @@ def finalizar_corrida(manter_telao=True):
     config_corrida["safety_car"] = False
     safety_inicio = None
     manter_telao_estatico = manter_telao
+    encerrar_camera = True
     exportar_resultado()
-    print("Corrida finalizada. Sistema continua aberto para zerar ou iniciar novamente.")
+    print("Corrida finalizada. Camera encerrada.")
 
 
 def processar_comandos():
@@ -379,6 +382,13 @@ def atualizar_estado_corrida():
 
 def corrida_ativa():
     return config_corrida["status"] == "correndo"
+
+
+def janela_camera_fechada():
+    try:
+        return cv2.getWindowProperty(CAMERA_WINDOW_NAME, cv2.WND_PROP_VISIBLE) < 1
+    except cv2.error:
+        return True
 
 
 # =========================
@@ -606,10 +616,10 @@ while True:
             (255, 255, 255),
             2
         )
-        cv2.imshow("Sistema de Corrida RC", frame)
+        cv2.imshow(CAMERA_WINDOW_NAME, frame)
         key = cv2.waitKey(1)
 
-        if key == 27:
+        if key == 27 or janela_camera_fechada():
             manter_telao_estatico = False
             break
 
@@ -657,11 +667,11 @@ while True:
 
     desenhar_ranking(frame)
 
-    cv2.imshow("Sistema de Corrida RC", frame)
+    cv2.imshow(CAMERA_WINDOW_NAME, frame)
 
     key = cv2.waitKey(1)
 
-    if key == 27:
+    if key == 27 or janela_camera_fechada():
         manter_telao_estatico = False
         break
 
