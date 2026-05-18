@@ -39,24 +39,45 @@ function enviar(tipo, dados = {}) {
 function coletarCorredores() {
     const corredores = {};
     document.querySelectorAll("[data-cor]").forEach(input => {
-        corredores[input.dataset.cor] = input.value.trim();
+        const nome = input.value.trim();
+
+        if (nome) {
+            corredores[input.dataset.cor] = nome;
+        }
     });
     return corredores;
 }
 
+function validarCorredores(corredores) {
+    if (Object.keys(corredores).length > 0) {
+        return true;
+    }
+
+    alert("Informe o nome de pelo menos um corredor para iniciar a corrida.");
+    return false;
+}
+
 function iniciarCorrida() {
+    const corredores = coletarCorredores();
+    if (!validarCorredores(corredores)) return;
+    const tempoLimiteSegundos = Number(document.getElementById("tempoLimite").value) * 60;
+
     enviar("start", {
         voltas_limite: Number(document.getElementById("voltasLimite").value),
-        tempo_limite: Number(document.getElementById("tempoLimite").value),
-        corredores: coletarCorredores()
+        tempo_limite: tempoLimiteSegundos,
+        corredores
     });
 }
 
 function reiniciarCorrida() {
+    const corredores = coletarCorredores();
+    if (!validarCorredores(corredores)) return;
+    const tempoLimiteSegundos = Number(document.getElementById("tempoLimite").value) * 60;
+
     enviar("restart", {
         voltas_limite: Number(document.getElementById("voltasLimite").value),
-        tempo_limite: Number(document.getElementById("tempoLimite").value),
-        corredores: coletarCorredores()
+        tempo_limite: tempoLimiteSegundos,
+        corredores
     });
 }
 
@@ -131,6 +152,17 @@ function atualizarTabela(data) {
         if (b.voltas !== a.voltas) return b.voltas - a.voltas;
         return (a.melhor || 999999) - (b.melhor || 999999);
     });
+
+    if (ranking.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="empty-table">Informe pelo menos um corredor</td></tr>`;
+        ultimoEstado = {};
+        return;
+    }
+
+    const emptyRow = tbody.querySelector(".empty-table");
+    if (emptyRow) {
+        emptyRow.closest("tr").remove();
+    }
 
     ranking.forEach((carro, i) => {
         let tr = document.getElementById("row-" + carro.cor);

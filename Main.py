@@ -1,10 +1,15 @@
-import cv2
-import numpy as np
-import time
 import csv
 import os
 import sys
+import time
 import webbrowser
+
+import cv2
+import numpy as np
+
+from anti_duplicate import AntiDuplicate
+from aruco_detector import ArucoDetector
+from server import comandos, config_corrida, estado_corrida, start_server_background
 
 try:
     import serial
@@ -16,71 +21,47 @@ try:
 except ImportError:
     winsound = None
 
-from server import comandos, config_corrida, estado_corrida, start_server_background
-
 # =========================
-# CONFIGURAÇÕES GERAIS
+# CONFIGURACOES GERAIS
 # =========================
 
-CAMERA_INDEX = 0  # None = procurar camera automaticamente. Use 0, 1, 2... para fixar.
+CAMERA_INDEX = None  # None = procurar camera automaticamente. Use 0, 1, 2... para fixar.
 ARDUINO_PORT = None  # None = procurar automaticamente. Exemplo manual: "COM3"
 ARDUINO_BAUD = 9600
-TEMPO_SEMAFORO = 3.0  # segundos ate a largada apos enviar START ao Arduino
-TEMPO_TELAO_ESTATICO = 300  # segundos mantendo o telao aberto apos finalizar pelo botao
+TEMPO_SEMAFORO = 3.0
+TEMPO_TELAO_ESTATICO = 300
 CAMERA_RECONNECT_INTERVAL = 2.0
 AUDIO_LARGADA = os.path.join("assets", "ContagemRegressiva.wav")
 FRAME_WIDTH = 1280
 FRAME_HEIGHT = 720
+TARGET_FPS = 60
+CAMERA_ORIENTATION = "rotate_180"  # normal, rotate_180, flip_horizontal, flip_vertical
 
-LINHA_Y = 300  # posição da linha de chegada (ajustar!)
-COOLDOWN = 15.0  # tempo mínimo entre voltas (segundos)
-AREA_MIN = 800  # área mínima para considerar objeto
+LINHA_Y = 300
+FAIXA_ALTURA = 80
+COOLDOWN = 2.0
 
 # =========================
-# CONFIGURAÇÃO DAS CORES (HSV)
-# AJUSTAR CONFORME NECESSÁRIO
+# CONFIGURACAO ARUCO
 # =========================
 
-carros = {
-    "vermelho": {
-        "ranges": [
-            (np.array([0, 170, 120]), np.array([8, 255, 255])),
-            (np.array([170, 170, 120]), np.array([179, 255, 255])),
-        ],
-        "cor_bgr": (0, 0, 255)
-    },
-    "azul": {
-        "lower": np.array([95, 100, 60]),
-        "upper": np.array([130, 255, 255]),
-        "cor_bgr": (255, 0, 0)
-    },
-    "verde": {
-        "lower": np.array([40, 80, 50]),
-        "upper": np.array([85, 255, 255]),
-        "cor_bgr": (0, 255, 0)
-    },
-    "amarelo": {
-        "lower": np.array([20, 130, 130]),
-        "upper": np.array([35, 255, 255]),
-        "cor_bgr": (0, 255, 255)
-    },
-    "roxo": {
-        "lower": np.array([125, 60, 30]),
-        "upper": np.array([160, 255, 170]),
-        "cor_bgr": (128, 0, 128)
-    },
-    "marrom": {
-        "lower": np.array([5, 70, 35]),
-        "upper": np.array([25, 255, 150]),
-        "cor_bgr": (42, 42, 165)
-    },
+CARROS_ARUCO = {
+    1: {"cor": "vermelho", "nome": "Carro vermelho", "cor_bgr": (0, 0, 255)},
+    2: {"cor": "verde", "nome": "Carro verde", "cor_bgr": (0, 255, 0)},
+    3: {"cor": "amarelo", "nome": "Carro amarelo", "cor_bgr": (0, 255, 255)},
+    4: {"cor": "azul", "nome": "Carro azul", "cor_bgr": (255, 0, 0)},
+    5: {"cor": "marrom", "nome": "Carro marrom", "cor_bgr": (42, 42, 165)},
+    6: {"cor": "roxo", "nome": "Carro roxo", "cor_bgr": (128, 0, 128)},
 }
+
+COR_POR_ID = {marker_id: dados["cor"] for marker_id, dados in CARROS_ARUCO.items()}
+CONFIG_POR_COR = {dados["cor"]: dados for dados in CARROS_ARUCO.values()}
 
 # =========================
 # ESTADO DOS CARROS
 # =========================
 
-estado = estado_corrida  # referência ao estado compartilhado com o servidor
+estado = estado_corrida
 
 arduino = None
 corrida_inicio = None
@@ -95,32 +76,37 @@ resultado_exportado = False
 cap = None
 ultima_tentativa_camera = 0
 
-for nome in carros:
-    estado[nome] = {
-        "cor": nome,
-        "nome": nome,
+for marker_id, config in CARROS_ARUCO.items():
+    cor = config["cor"]
+    estado[cor] = {
+        "id_aruco": marker_id,
+        "cor": cor,
+        "nome": config["nome"],
         "ultima_pos": None,
         "ultima_passagem": 0,
         "voltas": 0,
         "melhor_volta": None,
         "ultima_volta": None,
         "largou": False,
+        "ativo": False,
         "tempo_inicio": time.perf_counter()
     }
 
 start_server_background()
-
 config_corrida["camera_conectada"] = False
+
 
 def caminho_recurso(nome_arquivo):
     base = getattr(sys, "_MEIPASS", os.path.abspath("."))
     return os.path.join(base, nome_arquivo)
+
 
 telao_web = caminho_recurso(os.path.join("web", "index.html")).replace(os.sep, "/")
 controle_web = caminho_recurso(os.path.join("web", "controle.html")).replace(os.sep, "/")
 webbrowser.open(f"file:///{telao_web}")
 webbrowser.open(f"file:///{controle_web}")
 print("Telao e painel de controle abertos no navegador.")
+
 
 def resetar_corrida():
     agora = time.perf_counter()
@@ -134,37 +120,67 @@ def resetar_corrida():
         dados["largou"] = False
         dados["tempo_inicio"] = agora
 
+
 def aplicar_nomes_corredores(nomes_corredores):
+    participantes = 0
+
+    for cor, dados in estado.items():
+        dados["ativo"] = False
+        dados["nome"] = CONFIG_POR_COR[cor]["nome"]
+
     if not isinstance(nomes_corredores, dict):
-        return
+        return 0
 
     for cor, nome_digitado in nomes_corredores.items():
         if cor not in estado:
             continue
 
         nome_limpo = str(nome_digitado).strip()
-        estado[cor]["nome"] = nome_limpo or cor
+        if not nome_limpo:
+            continue
+
+        estado[cor]["nome"] = nome_limpo
+        estado[cor]["ativo"] = True
+        participantes += 1
+
+    return participantes
+
+
+def proximo_arquivo_resultado(output_dir):
+    data_hoje = time.strftime("%d-%m-%Y")
+    numero = 1
+
+    while True:
+        nome_arquivo = f"Corrida{numero:02d}-{data_hoje}.csv"
+        caminho = os.path.join(output_dir, nome_arquivo)
+
+        if not os.path.exists(caminho):
+            return caminho
+
+        numero += 1
+
 
 def exportar_resultado():
     global resultado_exportado
 
     output_dir = os.path.join(os.path.abspath("."), "output")
     os.makedirs(output_dir, exist_ok=True)
-    resultado_csv = os.path.join(output_dir, "resultado_corrida.csv")
+    resultado_csv = proximo_arquivo_resultado(output_dir)
 
     with open(resultado_csv, "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["Posicao", "Carro", "Voltas", "Ultima Volta", "Melhor Volta"])
+        writer.writerow(["Posicao", "Carro", "ID ArUco", "Voltas", "Ultima Volta", "Melhor Volta"])
 
         ranking_final = sorted(
-            estado.items(),
+            ((cor, dados) for cor, dados in estado.items() if dados.get("ativo")),
             key=lambda x: (-x[1]["voltas"], x[1]["melhor_volta"] or 9999)
         )
 
-        for posicao, (nome, dados) in enumerate(ranking_final, start=1):
+        for posicao, (cor, dados) in enumerate(ranking_final, start=1):
             writer.writerow([
                 posicao,
-                dados.get("nome") or nome,
+                dados.get("nome") or cor,
+                dados.get("id_aruco", ""),
                 dados["voltas"],
                 round(dados["ultima_volta"], 2) if dados["ultima_volta"] else 0,
                 round(dados["melhor_volta"], 2) if dados["melhor_volta"] else 0
@@ -172,6 +188,7 @@ def exportar_resultado():
 
     resultado_exportado = True
     print(f"Resultado exportado para {resultado_csv}")
+
 
 def abrir_arduino():
     if serial is None:
@@ -192,11 +209,6 @@ def abrir_arduino():
     print("Arduino nao encontrado. A corrida inicia, mas o semaforo nao sera acionado.")
     return None
 
-def acionar_semaforo():
-    if arduino and arduino.is_open:
-        arduino.write(b"START\n")
-        print("Comando START enviado ao Arduino.")
-    tocar_som_largada()
 
 def tocar_som_largada():
     if winsound is None:
@@ -211,10 +223,19 @@ def tocar_som_largada():
 
     winsound.PlaySound(caminho_audio, winsound.SND_FILENAME | winsound.SND_ASYNC)
 
+
+def acionar_semaforo():
+    if arduino and arduino.is_open:
+        arduino.write(b"START\n")
+        print("Comando START enviado ao Arduino.")
+    tocar_som_largada()
+
+
 def enviar_arduino(comando):
     if arduino and arduino.is_open:
         arduino.write(f"{comando}\n".encode("ascii"))
         print(f"Comando {comando} enviado ao Arduino.")
+
 
 def iniciar_corrida(comando):
     global corrida_inicio, aguardando_largada_ate, voltas_limite, tempo_limite
@@ -225,7 +246,16 @@ def iniciar_corrida(comando):
     tempo_pausado_total = 0
     safety_inicio = None
     resultado_exportado = False
-    aplicar_nomes_corredores(comando.get("corredores"))
+    participantes = aplicar_nomes_corredores(comando.get("corredores"))
+    if participantes == 0:
+        config_corrida.update({
+            "status": "aguardando",
+            "tempo_restante": tempo_limite,
+            "safety_car": False
+        })
+        print("Informe pelo menos um corredor antes de iniciar a corrida.")
+        return
+
     resetar_corrida()
     acionar_semaforo()
 
@@ -239,6 +269,7 @@ def iniciar_corrida(comando):
         "safety_car": False
     })
     print(f"Corrida preparada: {voltas_limite} voltas ou {tempo_limite}s.")
+
 
 def alternar_safety_car():
     global tempo_pausado_total, safety_inicio
@@ -259,6 +290,7 @@ def alternar_safety_car():
         config_corrida["safety_car"] = True
         enviar_arduino("SAFETY_ON")
         print("Safety Car acionado. Cronometro pausado.")
+
 
 def zerar_corrida():
     global corrida_inicio, aguardando_largada_ate, tempo_pausado_total, safety_inicio
@@ -281,6 +313,7 @@ def zerar_corrida():
     })
     print("Corrida zerada. Sistema pronto para iniciar novamente.")
 
+
 def finalizar_corrida(manter_telao=True):
     global corrida_inicio, aguardando_largada_ate, manter_telao_estatico, safety_inicio
 
@@ -297,6 +330,7 @@ def finalizar_corrida(manter_telao=True):
     exportar_resultado()
     print("Corrida finalizada. Sistema continua aberto para zerar ou iniciar novamente.")
 
+
 def processar_comandos():
     while comandos:
         comando = comandos.pop(0)
@@ -310,6 +344,7 @@ def processar_comandos():
             zerar_corrida()
         elif comando.get("tipo") == "camera_reconnect":
             reconectar_camera(forcar=True)
+
 
 def atualizar_estado_corrida():
     global corrida_inicio, aguardando_largada_ate
@@ -330,19 +365,33 @@ def atualizar_estado_corrida():
     restante = max(0, tempo_limite - decorrido)
     config_corrida["tempo_restante"] = restante
 
-    finalizou_voltas = any(dados["voltas"] >= voltas_limite for dados in estado.values())
+    finalizou_voltas = any(
+        dados["voltas"] >= voltas_limite
+        for dados in estado.values()
+        if dados.get("ativo")
+    )
 
     if restante <= 0 or finalizou_voltas:
         config_corrida["tempo_restante"] = restante
         finalizar_corrida(manter_telao=True)
         print("Corrida finalizada.")
 
+
 def corrida_ativa():
     return config_corrida["status"] == "correndo"
 
+
 # =========================
-# INICIALIZAÇÃO DA CÂMERA
+# CAMERA E DETECCAO
 # =========================
+
+def gpu_available():
+    try:
+        count = cv2.cuda.getCudaEnabledDeviceCount()
+        return count > 0
+    except Exception:
+        return False
+
 
 def abrir_camera():
     indices = [CAMERA_INDEX] if CAMERA_INDEX is not None else range(5)
@@ -351,6 +400,7 @@ def abrir_camera():
         camera = cv2.VideoCapture(indice, cv2.CAP_DSHOW)
         camera.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
         camera.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
+        camera.set(cv2.CAP_PROP_FPS, TARGET_FPS)
 
         if camera.isOpened():
             ret, _ = camera.read()
@@ -364,6 +414,7 @@ def abrir_camera():
         "Nenhuma camera disponivel foi encontrada. "
         "Verifique se a camera esta conectada e nao esta aberta em outro programa."
     )
+
 
 def reconectar_camera(forcar=False):
     global cap, ultima_tentativa_camera
@@ -382,6 +433,7 @@ def reconectar_camera(forcar=False):
         cap = abrir_camera()
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
+        cap.set(cv2.CAP_PROP_FPS, TARGET_FPS)
         config_corrida["camera_conectada"] = True
         print("Camera conectada.")
         return True
@@ -390,29 +442,144 @@ def reconectar_camera(forcar=False):
         print(f"Falha ao conectar camera: {erro}")
         return False
 
+
+def preprocess_frame(frame, use_gpu=False):
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    gray = cv2.equalizeHist(gray)
+
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    gray = clahe.apply(gray)
+
+    if use_gpu:
+        try:
+            gpu_mat = cv2.cuda_GpuMat()
+            gpu_mat.upload(gray)
+            gpu_result = cv2.cuda.GaussianBlur(gpu_mat, (5, 5), 0)
+            return gpu_result.download()
+        except Exception:
+            pass
+
+    return cv2.GaussianBlur(gray, (5, 5), 0)
+
+
+def ajustar_orientacao_camera(frame):
+    if CAMERA_ORIENTATION == "normal":
+        return frame
+
+    if CAMERA_ORIENTATION == "rotate_180":
+        return cv2.rotate(frame, cv2.ROTATE_180)
+
+    if CAMERA_ORIENTATION == "flip_horizontal":
+        return cv2.flip(frame, 1)
+
+    if CAMERA_ORIENTATION == "flip_vertical":
+        return cv2.flip(frame, 0)
+
+    print(f"Orientacao de camera invalida: {CAMERA_ORIENTATION}. Usando imagem normal.")
+    return frame
+
+
+def get_finish_zone(frame):
+    height, width = frame.shape[:2]
+    line_y = min(max(LINHA_Y, 0), height)
+    half_zone = FAIXA_ALTURA // 2
+    return (0, max(0, line_y - half_zone), width, min(height, line_y + half_zone))
+
+
+def draw_finish_zone(frame, zone):
+    x1, y1, x2, y2 = zone
+    overlay = frame.copy()
+
+    cv2.rectangle(overlay, (x1, y1), (x2, y2), (255, 180, 0), -1)
+    cv2.addWeighted(overlay, 0.18, frame, 0.82, 0, frame)
+    cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 180, 0), 2)
+    cv2.line(frame, (x1, LINHA_Y), (x2, LINHA_Y), (255, 255, 255), 2)
+    cv2.putText(
+        frame,
+        "FAIXA DE CONTAGEM ARUCO",
+        (10, max(25, y1 - 10)),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (255, 255, 0),
+        2,
+        cv2.LINE_AA,
+    )
+
+
+def draw_detection(frame, detection, cor, nome_exibicao):
+    config = CONFIG_POR_COR[cor]
+    corners = detection["corners"].astype(int)
+    center = (detection["x"], detection["y"])
+
+    cv2.polylines(frame, [corners], True, config["cor_bgr"], 2)
+    cv2.circle(frame, center, 5, config["cor_bgr"], -1)
+    cv2.putText(
+        frame,
+        f"{nome_exibicao} | ID {detection['id']}",
+        (corners[0][0], max(20, corners[0][1] - 10)),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        config["cor_bgr"],
+        2,
+        cv2.LINE_AA,
+    )
+
+
+def registrar_passagem(cor, agora):
+    dados = estado[cor]
+    nome_exibicao = dados.get("nome") or cor
+
+    if not dados["largou"]:
+        dados["largou"] = True
+        dados["tempo_inicio"] = agora
+        dados["ultima_passagem"] = agora
+        print(f"{nome_exibicao} - Inicio registrado.")
+        return
+
+    dados["voltas"] += 1
+
+    tempo_volta = agora - dados["ultima_passagem"]
+    dados["ultima_passagem"] = agora
+    dados["ultima_volta"] = tempo_volta
+
+    if dados["melhor_volta"] is None or tempo_volta < dados["melhor_volta"]:
+        dados["melhor_volta"] = tempo_volta
+
+    print(f"{nome_exibicao} - Volta {dados['voltas']} - {tempo_volta:.2f}s")
+
+
+def desenhar_ranking(frame):
+    ranking = sorted(
+        ((cor, dados) for cor, dados in estado.items() if dados.get("ativo")),
+        key=lambda x: (-x[1]["voltas"], x[1]["melhor_volta"] or 9999)
+    )
+
+    y_texto = 30
+
+    for i, (cor, dados) in enumerate(ranking):
+        nome_exibicao = dados.get("nome") or cor
+        texto = (
+            f"{i + 1}o {nome_exibicao} | ID {dados.get('id_aruco')} | "
+            f"Voltas: {dados['voltas']} | Ult: {dados['ultima_volta'] or 0:.2f}s | "
+            f"Best: {dados['melhor_volta'] or 0:.2f}s"
+        )
+        cv2.putText(frame, texto, (10, y_texto), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        y_texto += 25
+
+
 reconectar_camera(forcar=True)
-
-kernel = np.ones((5, 5), np.uint8)
 arduino = abrir_arduino()
+detector = ArucoDetector()
+anti_duplicate = AntiDuplicate(cooldown=COOLDOWN)
+use_gpu = gpu_available()
 
-# =========================
-# FUNÇÃO: DETECTAR CENTRO
-# =========================
+if use_gpu:
+    print("GPU detectada. Usando pre-processamento com GPU quando possivel.")
+else:
+    print("GPU nao detectada. Usando CPU para captura e deteccao.")
 
-def detectar_centro(mask):
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    
-    if contours:
-        maior = max(contours, key=cv2.contourArea)
-        area = cv2.contourArea(maior)
-
-        if area > AREA_MIN:
-            x, y, w, h = cv2.boundingRect(maior)
-            cx = int(x + w / 2)
-            cy = int(y + h / 2)
-            return cx, cy, x, y, w, h
-
-    return None
+print("Deteccao ArUco ativa.")
+print("IDs configurados: 1 vermelho, 2 verde, 3 amarelo, 4 azul, 5 marrom, 6 roxo.")
 
 # =========================
 # LOOP PRINCIPAL
@@ -450,84 +617,51 @@ while True:
 
     config_corrida["camera_conectada"] = True
 
-    frame = cv2.flip(frame, 0)  # ajustar se necessário
-    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-
+    frame = ajustar_orientacao_camera(frame)
     agora = time.perf_counter()
+    finish_zone = get_finish_zone(frame)
 
-    # desenhar linha de chegada
-    cv2.line(frame, (0, LINHA_Y), (FRAME_WIDTH, LINHA_Y), (255, 255, 255), 2)
+    gray_frame = preprocess_frame(frame, use_gpu=use_gpu)
+    detections = detector.detect(gray_frame)
 
-    for nome, config in carros.items():
-        if "ranges" in config:
-            mask = np.zeros(hsv.shape[:2], dtype=np.uint8)
+    draw_finish_zone(frame, finish_zone)
 
-            for lower, upper in config["ranges"]:
-                mask = cv2.bitwise_or(mask, cv2.inRange(hsv, lower, upper))
-        else:
-            mask = cv2.inRange(hsv, config["lower"], config["upper"])
+    for detection in detections:
+        marker_id = detection["id"]
+        cor = COR_POR_ID.get(marker_id)
 
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        if cor is None:
+            cv2.putText(
+                frame,
+                f"ID {marker_id} nao configurado",
+                (detection["x"] + 10, detection["y"]),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (0, 0, 255),
+                2,
+                cv2.LINE_AA,
+            )
+            continue
 
-        resultado = detectar_centro(mask)
+        dados = estado[cor]
+        if not dados.get("ativo"):
+            continue
 
-        if resultado:
-            cx, cy, x, y, w, h = resultado
+        nome_exibicao = dados.get("nome") or CONFIG_POR_COR[cor]["nome"]
 
-            # desenhar bounding box
-            cv2.rectangle(frame, (x, y), (x+w, y+h), config["cor_bgr"], 2)
-            cv2.circle(frame, (cx, cy), 5, config["cor_bgr"], -1)
+        draw_detection(frame, detection, cor, nome_exibicao)
+        dados["ultima_pos"] = (detection["x"], detection["y"])
 
-            prev = estado[nome]["ultima_pos"]
+        if corrida_ativa() and anti_duplicate.process_zone(marker_id, detection["x"], detection["y"], finish_zone):
+            registrar_passagem(cor, agora)
 
-            # DETECÇÃO DE CRUZAMENTO
-            if corrida_ativa() and prev is not None:
-                if prev > LINHA_Y and cy <= LINHA_Y:
-                    tempo_desde_ultima = agora - estado[nome]["ultima_passagem"]
-
-                    if tempo_desde_ultima > COOLDOWN:
-                        if not estado[nome]["largou"]:
-                            estado[nome]["largou"] = True
-                            estado[nome]["tempo_inicio"] = agora
-                            estado[nome]["ultima_passagem"] = agora
-                            print(f"{nome} - Inicio registrado.")
-                        else:
-                            estado[nome]["voltas"] += 1
-
-                            tempo_volta = agora - estado[nome]["ultima_passagem"]
-                            estado[nome]["ultima_passagem"] = agora
-                            estado[nome]["ultima_volta"] = tempo_volta
-
-                            if (estado[nome]["melhor_volta"] is None or 
-                                tempo_volta < estado[nome]["melhor_volta"]):
-                                estado[nome]["melhor_volta"] = tempo_volta
-
-                            print(f"{nome} - Volta {estado[nome]['voltas']} - {tempo_volta:.2f}s")
-
-            estado[nome]["ultima_pos"] = cy
-
-    # =========================
-    # RANKING
-    # =========================
-
-    ranking = sorted(
-        estado.items(),
-        key=lambda x: (-x[1]["voltas"], x[1]["melhor_volta"] or 9999)
-    )
-
-    y_texto = 30
-
-    for i, (nome, dados) in enumerate(ranking):
-        nome_exibicao = dados.get("nome") or nome
-        texto = f"{i+1}º {nome_exibicao} | Voltas: {dados['voltas']} | Ult: {dados['ultima_volta'] or 0:.2f}s | Best: {dados['melhor_volta'] or 0:.2f}s"
-        cv2.putText(frame, texto, (10, y_texto), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,255), 2)
-        y_texto += 25
+    desenhar_ranking(frame)
 
     cv2.imshow("Sistema de Corrida RC", frame)
 
     key = cv2.waitKey(1)
 
-    if key == 27:  # ESC para sair
+    if key == 27:
         manter_telao_estatico = False
         break
 

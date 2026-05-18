@@ -200,6 +200,12 @@ tr:nth-child(odd) { background: #0f1627; }
 .pos2 { color: #d9e2ef; font-weight: bold; }
 .pos3 { color: #f0a35b; font-weight: bold; }
 
+.empty-table {
+    color: #9fb2d8;
+    font-size: 32px;
+    padding: 34px;
+}
+
 .color-name {
     display: block;
     color: #9fb2d8;

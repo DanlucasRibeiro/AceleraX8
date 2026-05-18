@@ -1,8 +1,7 @@
-Posicao,Carro,Voltas,Ultima Volta,Melhor Volta
-1,vermelho,0,0,0
-2,azul,0,0,0
-3,verde,0,0,0
-4,amarelo,0,0,0
-5,roxo,0,0,0
-6,rosa,0,0,0
-7,marrom,0,0,0
+Posicao,Carro,ID ArUco,Voltas,Ultima Volta,Melhor Volta
+1,Carro amarelo,3,3,2.48,2.21
+2,Carro vermelho,1,0,0,0
+3,Carro verde,2,0,0,0
+4,Carro azul,4,0,0,0
+5,Carro marrom,5,0,0,0
+6,Carro roxo,6,0,0,0

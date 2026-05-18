@@ -16,7 +16,7 @@ a = Analysis(
         ("assets/LogoFlowerEngenharia.png", "assets"),
         ("assets/ContagemRegressiva.wav", "assets"),
     ],
-    hiddenimports=[],
+    hiddenimports=["cv2.aruco"],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

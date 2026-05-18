@@ -70,6 +70,17 @@ function atualizarTabela(data) {
         return (a.melhor || 999999) - (b.melhor || 999999);
     });
 
+    if (ranking.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="empty-table">Aguardando corredores</td></tr>`;
+        ultimoEstado = {};
+        return;
+    }
+
+    const emptyRow = tbody.querySelector(".empty-table");
+    if (emptyRow) {
+        emptyRow.closest("tr").remove();
+    }
+
     ranking.forEach((carro, i) => {
         let tr = document.getElementById("row-" + carro.cor);
 

@@ -8,7 +8,7 @@ estado_corrida = {}
 comandos = []
 config_corrida = {
     "status": "aguardando",
-    "voltas_limite": 10,
+    "voltas_limite": 30,
     "tempo_limite": 300,
     "tempo_restante": 300,
     "safety_car": False,
@@ -22,8 +22,21 @@ async def processar_mensagem(message):
         return
 
     if dados.get("tipo") in ("start", "restart"):
-        voltas = max(1, int(dados.get("voltas_limite", 10)))
+        voltas = max(1, int(dados.get("voltas_limite", 30)))
         tempo = max(1, int(dados.get("tempo_limite", 300)))
+        corredores = {
+            cor: nome
+            for cor, nome in dados.get("corredores", {}).items()
+            if str(nome).strip()
+        }
+
+        if not corredores:
+            config_corrida.update({
+                "status": "aguardando",
+                "tempo_restante": config_corrida.get("tempo_limite", 300),
+                "safety_car": False
+            })
+            return
 
         config_corrida.update({
             "status": "preparando",
@@ -37,7 +50,7 @@ async def processar_mensagem(message):
             "tipo": dados.get("tipo"),
             "voltas_limite": voltas,
             "tempo_limite": tempo,
-            "corredores": dados.get("corredores", {})
+            "corredores": corredores
         })
 
     if dados.get("tipo") == "safety_toggle":
@@ -85,6 +98,9 @@ async def broadcast():
             carros = []
 
             for nome, d in list(estado_corrida.items()):
+                if not d.get("ativo"):
+                    continue
+
                 carros.append({
                     "cor": d.get("cor", nome),
                     "nome": d.get("nome") or nome,
